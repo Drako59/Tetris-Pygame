@@ -63,7 +63,7 @@ class block:
                     if self.name == "light blue":
                         k = 4
                     block_place[i] = [(WIDTH / 2) + (col * self.size[1] - self.size[1]),row * self.size[0] - k * self.size[1]]
-                    print(block_place)
+                    # print(block_place)
                     i += 1
         for i in range(4):
             block_shape[i] = pygame.Rect(block_place[i][0],block_place[i][1],self.size[0],self.size[1])
@@ -438,7 +438,7 @@ class block:
         #         col = int(blocks.x / 60)
         #         if board_blocks[row][col]:
         while True:
-            print("loop")
+            # print("loop")
             if self.check_continue(blocks,self.size[0],board_blocks):
                     self.go_down(blocks)
             else:
@@ -543,7 +543,7 @@ def main():
     global HEIGTH
     global positions
     monitors = pygame.display.get_desktop_sizes()
-    print(monitors)
+    # print(monitors)
     # WIDTH = monitors[0][0] // 3
     # size = WIDTH // 10
     # HEIGTH = size * 16
@@ -557,7 +557,7 @@ def main():
     global board_blocks
     board_blocks = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
     debug_list = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
-    print(board_blocks)
+    # print(board_blocks)
     color_blocks = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
     SIZE = (WIDTH,HEIGTH)
     mikum_list: list[list] = create_2d_list(int(HEIGTH / size) + 1, int(WIDTH / size))
@@ -716,23 +716,23 @@ def main():
 
             if block_exit:
                 for rect in blocks:
-                    print(num)
+                    # print(num)
                     num += 1
                     # print((rect.bottom / 60)-1,(rect.x + blocks_list[counter].size[0]))
-                    print_2d_list(board_blocks)
+                    # print_2d_list(board_blocks)
                     # print_2d_list(debug_list)
                     y = int(rect.bottom / blocks_list[counter].size[0])-1
                     x = int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1
-                    print(f"{rect.bottom}  {rect.x + blocks_list[counter].size[0]}")
-                    print(f"{x}  {y}")
+                    # print(f"{rect.bottom}  {rect.x + blocks_list[counter].size[0]}")
+                    # print(f"{x}  {y}")
                     pygame.draw.rect(screen,"pink",rect)
                     debug_list[int(rect.y / blocks_list[counter].size[0] + 1)][int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1] = "[]"
                     positions[int(rect.y / blocks_list[counter].size[0]) + 1][int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1] = 1
-                    print(int(rect.y / blocks_list[counter].size[0]))
-                    print(rect.y)
+                    # print(int(rect.y / blocks_list[counter].size[0]))
+                    # print(rect.y)
                     board_blocks[int(rect.y / blocks_list[counter].size[0]) + 1 ][int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1] = rect.copy()
                     color_blocks[int(rect.y / blocks_list[counter].size[0] + 1)][int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1] = blocks_list[counter].name
-                    print_2d_list(positions)
+                    # print_2d_list(positions)
                 if allow_key:
                     pygame.mixer.Sound.play(set_block_sound)
 
@@ -777,7 +777,7 @@ def main():
                 positions.insert(0,create_row(int(WIDTH / blocks_list[counter].size[0])))
                 color_blocks.pop(row_pop)
                 color_blocks.insert(0,create_row(int(WIDTH / blocks_list[counter].size[0])))
-                print_2d_list(board_blocks)
+                # print_2d_list(board_blocks)
                 for row in range(len(board_blocks)):
                     if row <= row_pop:
                         for col in range(len(board_blocks[row])):
