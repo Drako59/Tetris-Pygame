@@ -1,0 +1,7 @@
+# pygbag downloads the runtime wheels here on every build - 20+ MB of pure cache
+Tetris/build/web-cache/
+
+__pycache__/
+*.pyc
+
+.idea/

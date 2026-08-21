@@ -552,6 +552,94 @@ def make_font(size) -> object:
     except Exception:
         return pygame.font.Font(None,size)
 
+#score, level and menus--------------------------------------------------------------------------------------------
+LINE_SCORES = {1 : 40, 2 : 100, 3 : 300, 4 : 1200}
+
+# NES gravity, frames per row at 60fps, indexed by level
+GRAVITY_FRAMES = (48,43,38,33,28,23,18,13,8,6,5,5,5,4,4,4,3,3,3,2,2,2,2,2,2,2,2,2,2,1)
+
+pause = False       # music paused, shared by the M key and the menus
+music_volume = 0.1
+
+def line_score(rows,level) -> int:
+    return LINE_SCORES.get(rows,0) * (level + 1)
+
+def gravity_ms(level) -> int:
+    # milliseconds per row, so the fall speed does not depend on the frame rate
+    if level >= len(GRAVITY_FRAMES):
+        return int(GRAVITY_FRAMES[-1] * 1000 / 60)
+    return int(GRAVITY_FRAMES[level] * 1000 / 60)
+
+def toggle_music() -> None:
+    global pause
+    if not pause:
+        pygame.mixer.music.pause()
+        pause = True
+    else:
+        pygame.mixer.music.unpause()
+        pause = False
+
+def change_volume(step) -> None:
+    global music_volume
+    music_volume = min(1.0,max(0.0,round(music_volume + step,1)))
+    pygame.mixer.music.set_volume(music_volume)
+
+def music_label() -> str:
+    if pause:
+        return "Music: OFF"
+    return f"Music: ON {int(music_volume * 100)}%"
+
+def draw_menu(screen,size,title_font,option_font,title,options,selected) -> None:
+    pygame.draw.rect(screen,"black",pygame.Rect(0,0,WIDTH,HEIGTH))
+    surface = title_font.render(title,True,"white")
+    screen.blit(surface,(WIDTH / 2 - surface.get_width() / 2,HEIGTH / 4))
+    for i in range(len(options)):
+        surface = option_font.render(options[i],True,"yellow" if i == selected else "white")
+        screen.blit(surface,(WIDTH / 2 - surface.get_width() / 2,HEIGTH / 2 + i * size * 1.2))
+    pygame.display.flip()
+
+async def run_menu(screen,size,title,labels,music_index) -> str:
+    # one event/render loop shared by both menus, returns the chosen label
+    global pause
+    title_font = make_font(round(size / 48 * 34))
+    option_font = make_font(round(size / 48 * 22))
+    selected = 0
+    menu_is_open = True
+    while menu_is_open:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "Quit"
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_DOWN:
+                    selected = (selected + 1) % len(labels)
+                if event.key == pygame.K_UP:
+                    selected = (selected - 1) % len(labels)
+                if event.key == pygame.K_RIGHT and selected == music_index:
+                    change_volume(0.1)
+                if event.key == pygame.K_LEFT and selected == music_index:
+                    change_volume(-0.1)
+                if event.key == pygame.K_m:
+                    toggle_music()
+                if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    if selected == music_index:
+                        toggle_music()
+                    else:
+                        return labels[selected]
+                if event.key == pygame.K_ESCAPE and "Resume" in labels:
+                    return "Resume"
+        options = labels.copy()
+        options[music_index] = music_label()
+        draw_menu(screen,size,title_font,option_font,title,options,selected)
+        await asyncio.sleep(1 / 30)
+    return labels[0]
+
+async def initial_menu(screen,size) -> str:
+    return await run_menu(screen,size,"TETRIS",["Start","Music","Quit"],1)
+
+async def pause_menu(screen,size) -> str:
+    return await run_menu(screen,size,"PAUSED",["Resume","Restart","Music","Quit"],2)
+#-------------------------------------------------------------------------------------------------------------------
+
 async def main():
     # start_time = time.time()
     # a big buffer at the browser's own rate, otherwise the web audio underruns and crackles
@@ -559,11 +647,11 @@ async def main():
     pygame.init()
     global score,level,level_speed,WIDTH,HEIGTH,positions,board_blocks
     global level
+    global pause
     score = 0
-    level = 1
-    level_speed = 10
-    next_level = 10_000
-    bonus_score = 3000
+    level = 0
+    lines_cleared = 0
+    level_speed = gravity_ms(level)
     global WIDTH
     global HEIGTH
     global positions
@@ -609,6 +697,8 @@ async def main():
     block_exit = 0
     font = make_font(int(size / 48 * 20))
     text = font.render("Score: " + str(score),True,"white")
+    info_font = make_font(int(size / 48 * 14))
+    text_info = info_font.render(f"Lv {level}  Lines {lines_cleared}",True,"white")
     # block_sizes = [[180,120],[180,120],[60,240],[180,120],[120,120],[180,120],[120,180]]
 
     clock = pygame.time.Clock()
@@ -633,12 +723,12 @@ async def main():
     #start screen--------------------------------------------------------------------------------------------------------
     if music_on:
         pygame.mixer.music.play(loops = -1)
-        pygame.mixer.music.set_volume(0.1)
-    x = WIDTH / 2 - 130
-    y = HEIGTH / 2 - 90
-    start_background = pygame.Rect(x,y,size * 5,size * 8)
-    while not run:
-        pygame.draw.rect(screen,"White",start_background)
+        pygame.mixer.music.set_volume(music_volume)
+    if await initial_menu(screen,size) == "Quit":
+        pygame.quit()
+        return
+    menu_action = ""
+    last_fall = pygame.time.get_ticks()
     #-------------------------------------------------------------------------------------------------------------------
     while run:
 
@@ -678,15 +768,12 @@ async def main():
                             pygame.mixer.music.unpause()
                             pause = False
                     if event.key == pygame.K_ESCAPE:
-                        _break =False
-                        while True:
-                            await asyncio.sleep(1)
-                            for event in pygame.event.get():
-                                if event.key == pygame.K_ESCAPE:
-                                    _break =True
-                                    break
-                            if _break == True:
-                                break
+                        menu_action = await pause_menu(screen,size)
+                        if menu_action == "Quit":
+                            pygame.quit()
+                            return
+                        # the menu ran for a while, so start the fall timer again from now
+                        last_fall = pygame.time.get_ticks()
 
                     # if event.key == pygame.K_z:
                     #     block = rotate(block, 270)
@@ -697,6 +784,24 @@ async def main():
                     #     block_x_pose += 60
                     # if event.key == pygame.K_LEFT and block_x_pose > 0:
                     #     block_x_pose -= 60
+
+            #restart from the pause menu, breaking out lets the outer loop start a fresh piece
+            if menu_action == "Restart":
+                menu_action = ""
+                positions = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
+                board_blocks = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
+                color_blocks = create_2d_list(int(HEIGTH / size) + 1,int(WIDTH / size))
+                score = 0
+                level = 0
+                lines_cleared = 0
+                level_speed = gravity_ms(level)
+                block_exit = 0
+                block_down_counter = 0
+                last_fall = pygame.time.get_ticks()
+                text = font.render("Score: " + str(score),True,"white")
+                text_info = info_font.render(f"Lv {level}  Lines {lines_cleared}",True,"white")
+                break
+
             if allow_key:
                 key = pygame.key.get_pressed()
                 if key[pygame.K_DOWN]:
@@ -742,6 +847,7 @@ async def main():
             for p in range(len(blocks)):
                 pygame.draw.rect(screen,block_name[rnd],blocks[p],)
             screen.blit(text,(int(size / 48 * 20), int(size / 48 * 20)))
+            screen.blit(text_info,(int(size / 48 * 20), int(size / 48 * 20) + text.get_height()))
             pygame.display.flip()
             #-------------------------------------------------------------------------------------------------------------------
             for block_value in blocks:
@@ -824,25 +930,26 @@ async def main():
                             if board_blocks[row][col]:
                                 board_blocks[row][col] = board_blocks[row][col].move(0,blocks_list[counter].size[1])
                 set_block_sound.stop()
-                score += 1000 + ((len(board_blocks) - row_pop) * 100)
+            if row_pop_counter > 0:
+                #classic scoring, one payout for the whole clear, then level every 10 lines
+                lines_cleared += row_pop_counter
+                score += line_score(row_pop_counter,level)
+                level = lines_cleared // 10
+                level_speed = gravity_ms(level)
                 text = font.render(f"Score: {score}", True, "white")
-            if row_pop_counter == 4:
-                score += bonus_score
-                text = font.render(f"Score: {score}", True, "white")
-                if bonus_score < 10000:
-                 bonus_score += 1000
-                tetris_row_sound.play()
-            elif row_pop_counter > 0:
-                bonus_score = 3000
-                full_row_sound.play()
+                text_info = info_font.render(f"Lv {level}  Lines {lines_cleared}",True,"white")
+                if row_pop_counter == 4:
+                    tetris_row_sound.play()
+                else:
+                    full_row_sound.play()
 
             #level speed set---------------------------------------------------------------------------------
-            if score > next_level:
-                level_speed -= 1
-                next_level += 1.2 * next_level
-            if block_down_counter % level_speed == 0:
+            # timer based, so the fall speed follows the level and not the frame rate
+            while pygame.time.get_ticks() - last_fall >= level_speed:
+                last_fall += level_speed
                 if  block_down_premission:
-                    blocks_list[counter].go_down(blocks)
+                    if blocks_list[counter].check_continue(blocks.copy(),blocks_list[counter].size[1],board_blocks):
+                        blocks_list[counter].go_down(blocks)
             block_down_counter += 1
             # print_2d_list(board_blocks)
             #--------------------------------------------------------------------------------------------------
@@ -888,6 +995,7 @@ async def main():
                     # print(row,col)
                     pygame.draw.rect(screen, color_blocks[row][col], board_blocks[row][col])
         screen.blit(text_score,(int(size / 48 * 20), int(size / 48 * 20)))
+        screen.blit(text_info,(int(size / 48 * 20), int(size / 48 * 20) + text_score.get_height()))
         x = WIDTH / 2 - 130
         y = HEIGTH / 2  - 90
         rec_ending = pygame.Rect(x, y, round(size / 48 * 300),round((size / 48) * 80))
