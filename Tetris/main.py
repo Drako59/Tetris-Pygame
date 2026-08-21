@@ -1,5 +1,5 @@
 import time
-
+import asyncio
 import pygame
 import random
 import sys
@@ -523,15 +523,40 @@ def create_row(num) -> list:
 #             if board_block[int(block.y  / size_block) + 1][int(block.x / size_block)]:
 #                 return False
 #     return True
-def main():
+class SilentSound:
+    # stand-in for a sound the browser cannot decode, so audio never kills the game
+    def play(self,*args,**kwargs) -> None:
+        pass
+    def stop(self,*args,**kwargs) -> None:
+        pass
+
+def load_sound(path) -> object:
+    try:
+        return pygame.mixer.Sound(path)
+    except Exception as error:
+        print(f"could not load {path}: {error}")
+        return SilentSound()
+
+def load_music(path) -> bool:
+    try:
+        pygame.mixer.music.load(path)
+        return True
+    except Exception as error:
+        print(f"could not load {path}: {error}")
+        return False
+
+def make_font(size) -> object:
+    # SysFont needs a font list the browser build does not have
+    try:
+        return pygame.font.SysFont("Comic Sans MS",size)
+    except Exception:
+        return pygame.font.Font(None,size)
+
+async def main():
     # start_time = time.time()
+    # a big buffer at the browser's own rate, otherwise the web audio underruns and crackles
+    pygame.mixer.pre_init(48000,-16,2,4096)
     pygame.init()
-    backSound = pygame.mixer.music.load("Sounds/Tetris.mp3")
-    full_row_sound = pygame.mixer.Sound("Sounds/full_row_sound.mp3")
-    tetris_row_sound = pygame.mixer.Sound("Sounds/full_tetris_sound.mp3")
-    hard_drop_sound = pygame.mixer.Sound("Sounds/Hard-drop-sound.mp3")
-    set_block_sound  = pygame.mixer.Sound("Sounds/block_set_sound.mp3")
-    lose_sound = pygame.mixer.Sound("Sounds/lose_sound_(I_AM_COMING_FOR_YOU).mp3")
     global score,level,level_speed,WIDTH,HEIGTH,positions,board_blocks
     global level
     score = 0
@@ -542,7 +567,11 @@ def main():
     global WIDTH
     global HEIGTH
     global positions
-    monitors = pygame.display.get_desktop_sizes()
+    try:
+        monitors = pygame.display.get_desktop_sizes()
+    except Exception as error:
+        print(f"could not read desktop size: {error}")
+        monitors = [(1920,1080)]
     # print(monitors)
     # WIDTH = monitors[0][0] // 3
     # size = WIDTH // 10
@@ -562,6 +591,13 @@ def main():
     SIZE = (WIDTH,HEIGTH)
     mikum_list: list[list] = create_2d_list(int(HEIGTH / size) + 1, int(WIDTH / size))
     screen = pygame.display.set_mode(SIZE)
+    await asyncio.sleep(0)  # FOR PYGBAG - let the browser show the canvas before loading assets
+    music_on = load_music("Sounds/Tetris.ogg")
+    full_row_sound = load_sound("Sounds/full_row_sound.ogg")
+    tetris_row_sound = load_sound("Sounds/full_tetris_sound.ogg")
+    hard_drop_sound = load_sound("Sounds/Hard-drop-sound.ogg")
+    set_block_sound  = load_sound("Sounds/block_set_sound.ogg")
+    lose_sound = load_sound("Sounds/lose_sound_(I_AM_COMING_FOR_YOU).ogg")
     block_url = { "purple" : "background remvoer/purple.png",
                    "orange" : "background remvoer/orange block.png",
                    "light blue" : "background remvoer/light blue block.png",
@@ -571,7 +607,7 @@ def main():
                    "red"  : "background remvoer/red block.png"}
     block_name = ("purple","orange","light blue","blue","yellow","green","red")
     block_exit = 0
-    font = pygame.font.SysFont("Comic Sans MS",int(size / 48 * 20))
+    font = make_font(int(size / 48 * 20))
     text = font.render("Score: " + str(score),True,"white")
     # block_sizes = [[180,120],[180,120],[60,240],[180,120],[120,120],[180,120],[120,180]]
 
@@ -595,8 +631,9 @@ def main():
     pause = False
 
     #start screen--------------------------------------------------------------------------------------------------------
-    pygame.mixer.music.play(loops = -1)
-    pygame.mixer.music.set_volume(0.1)
+    if music_on:
+        pygame.mixer.music.play(loops = -1)
+        pygame.mixer.music.set_volume(0.1)
     x = WIDTH / 2 - 130
     y = HEIGTH / 2 - 90
     start_background = pygame.Rect(x,y,size * 5,size * 8)
@@ -623,7 +660,7 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
-                    exit()
+                    return
                 if event.type ==  pygame.KEYDOWN:
                     if event.key == pygame.K_z or event.key == pygame.K_UP:
                         blocks,rotation = blocks_list[counter].check_rotate(blocks, board_blocks)
@@ -631,7 +668,7 @@ def main():
                     if event.key == pygame.K_SPACE:
                         blocks_list[counter].hard_drop(blocks,board_blocks)
                         allow_key = False
-                        pygame.mixer.Sound.play(hard_drop_sound)
+                        hard_drop_sound.play()
                         # blocks_list[counter].rotate(blocks)
                     if event.key == pygame.K_m:
                         if not pause:
@@ -643,7 +680,7 @@ def main():
                     if event.key == pygame.K_ESCAPE:
                         _break =False
                         while True:
-                            time.sleep(1)
+                            await asyncio.sleep(1)
                             for event in pygame.event.get():
                                 if event.key == pygame.K_ESCAPE:
                                     _break =True
@@ -683,7 +720,10 @@ def main():
             #end keys-----------------------------------------------------------------------------
 
 
-            clock.tick(10)
+            # FOR PYGBAG - sleeping instead of clock.tick lets the browser run its
+            # audio and input handling during the frame instead of being blocked
+            await asyncio.sleep(0.1)
+
             start_time = time.time()
             # screen.blit(background, (0, 0))
             pygame.draw.rect(screen, "black", background_white)
@@ -734,7 +774,7 @@ def main():
                     color_blocks[int(rect.y / blocks_list[counter].size[0] + 1)][int((rect.x + blocks_list[counter].size[0]) / blocks_list[counter].size[0])-1] = blocks_list[counter].name
                     # print_2d_list(positions)
                 if allow_key:
-                    pygame.mixer.Sound.play(set_block_sound)
+                    set_block_sound.play()
 
                 #check for full row-----------------------------------------------------------------------------------------------
                 # while (return_row_full(positions) + 1):
@@ -783,7 +823,7 @@ def main():
                         for col in range(len(board_blocks[row])):
                             if board_blocks[row][col]:
                                 board_blocks[row][col] = board_blocks[row][col].move(0,blocks_list[counter].size[1])
-                pygame.mixer.Sound.stop(set_block_sound)
+                set_block_sound.stop()
                 score += 1000 + ((len(board_blocks) - row_pop) * 100)
                 text = font.render(f"Score: {score}", True, "white")
             if row_pop_counter == 4:
@@ -791,10 +831,10 @@ def main():
                 text = font.render(f"Score: {score}", True, "white")
                 if bonus_score < 10000:
                  bonus_score += 1000
-                pygame.mixer.Sound.play(tetris_row_sound)
+                tetris_row_sound.play()
             elif row_pop_counter > 0:
                 bonus_score = 3000
-                pygame.mixer.Sound.play(full_row_sound)
+                full_row_sound.play()
 
             #level speed set---------------------------------------------------------------------------------
             if score > next_level:
@@ -823,14 +863,15 @@ def main():
         if blocks_list[counter - 1].check_lose(positions):
             break
         end_time = time.time()
-        print(f"time took: {end_time - start_time}")
-    pygame.mixer.Sound.play(lose_sound)
+        # print(f"time took: {end_time - start_time}")
+
+    lose_sound.play()
     text_score = text
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                exit()
+                return
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_m:
                     if not pause:
@@ -851,20 +892,22 @@ def main():
         y = HEIGTH / 2  - 90
         rec_ending = pygame.Rect(x, y, round(size / 48 * 300),round((size / 48) * 80))
         pygame.draw.rect(screen,"white",rec_ending)
-        font = pygame.font.SysFont("Comic Sans MS", round(size / 48 * 40))
+        font = make_font(round(size / 48 * 40))
         text = font.render(f"You lost :(",True,(255,0,0))
         x = WIDTH // 2 - round((size / 48) * 80)
         y = HEIGTH // 2 - round(size / 48 * 80)
         screen.blit(text,(x,y))
         pygame.display.flip()
+        await asyncio.sleep(1 / 30)  # FOR PYGBAG
 
 
 
 
 
 if __name__ == '__main__':
-    main()
 
+
+    asyncio.run(main())
 
 
 # debug------------------
